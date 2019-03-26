@@ -17,13 +17,13 @@ import (
 	minio "github.com/minio/minio-go"
 )
 
-func getBlobHandler(minioClient *minio.Client) http.HandlerFunc {
+func getBlobHandler(minioClient *minio.Client, bucket string) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 
 		vars := mux.Vars(r)
 		object := vars["object"]
 
-		objectReceived, getErr := minioClient.GetObject("tables", object, minio.GetObjectOptions{})
+		objectReceived, getErr := minioClient.GetObject(bucket, object, minio.GetObjectOptions{})
 		if getErr != nil {
 			w.WriteHeader(http.StatusNotFound)
 			log.Println("Can't get object " + object)
@@ -43,7 +43,7 @@ func getBlobHandler(minioClient *minio.Client) http.HandlerFunc {
 	}
 }
 
-func putBlobHandler(minioClient *minio.Client) http.HandlerFunc {
+func putBlobHandler(minioClient *minio.Client, bucket string) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		vars := mux.Vars(r)
 		object := vars["object"]
@@ -52,7 +52,7 @@ func putBlobHandler(minioClient *minio.Client) http.HandlerFunc {
 		body, _ := ioutil.ReadAll(r.Body)
 		reader := bytes.NewReader(body)
 
-		n, putErr := minioClient.PutObject("tables", object, reader, reader.Size(), minio.PutObjectOptions{ContentType:"application/octet-stream"})
+		n, putErr := minioClient.PutObject(bucket, object, reader, reader.Size(), minio.PutObjectOptions{ContentType:"application/octet-stream"})
 		if putErr != nil {
 			log.Println("Can't put object " + object)
 			w.WriteHeader(http.StatusInternalServerError)
@@ -65,13 +65,13 @@ func putBlobHandler(minioClient *minio.Client) http.HandlerFunc {
 	}
 }
 
-func getHandler(minioClient *minio.Client) http.HandlerFunc {
+func getHandler(minioClient *minio.Client, bucket string) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 
 		vars := mux.Vars(r)
 		object := vars["object"]
 
-		objectReceived, getErr := minioClient.GetObject("tables", object, minio.GetObjectOptions{} )
+		objectReceived, getErr := minioClient.GetObject(bucket, object, minio.GetObjectOptions{} )
 		if getErr != nil {
 			w.WriteHeader(http.StatusNotFound)
 			log.Println("Can't get object " + object)
@@ -92,7 +92,7 @@ func getHandler(minioClient *minio.Client) http.HandlerFunc {
 	}
 }
 
-func putHandler(minioClient *minio.Client) http.HandlerFunc {
+func putHandler(minioClient *minio.Client, bucket string) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		vars := mux.Vars(r)
 		object := vars["object"]
@@ -101,7 +101,7 @@ func putHandler(minioClient *minio.Client) http.HandlerFunc {
 		body, _ := ioutil.ReadAll(r.Body)
 		reader := bytes.NewReader(body)
 
-		n, putErr := minioClient.PutObject("tables", object, reader, reader.Size(), minio.PutObjectOptions{ContentType:"application/text"})
+		n, putErr := minioClient.PutObject(bucket, object, reader, reader.Size(), minio.PutObjectOptions{ContentType:"application/text"})
 		if putErr != nil {
 			log.Println("Can't put object " + object)
 			w.WriteHeader(http.StatusInternalServerError)
@@ -128,7 +128,7 @@ func get(key string) string {
 	return env
 }
 
-func connect(ssl bool, secret string, access string, host string) (*minio.Client, error) {
+func connect(ssl bool, secret string, access string, host string, bucket string) (*minio.Client, error) {
 	maxAttempts := 30
         connected := false
 	var err error
@@ -151,14 +151,10 @@ func connect(ssl bool, secret string, access string, host string) (*minio.Client
 		return nil, err
         }
 
-	exists, err := minioClient.BucketExists("tables")
+	exists, err := minioClient.BucketExists(bucket)
         if err == nil && exists == false {
-		err = minioClient.MakeBucket("tables", "us-east-1")
-		if err != nil {
-			fmt.Println(err)
-		} else {
-			fmt.Println("Successfully created bucket \"tables\".")
-		}
+		fmt.Println("Create bucket first...")
+                return nil, err
 	}
 
 	return minioClient, err
@@ -169,19 +165,20 @@ func main() {
 	secret := get("secret")
 	access := get("access")
 	host := os.Getenv("host")
+        bucket := os.Getenv("bucket")
 
 	fmt.Printf("secret='%s',access='%s'\n", secret, access)
-	minioClient, err := connect(ssl, secret, access, host)
+	minioClient, err := connect(ssl, secret, access, host, bucket)
         if err != nil {
 		log.Fatal(err)
 	}
 
 	r := mux.NewRouter()
-	r.Handle("/put/{object:[a-zA-Z0-9.-_]+}", putHandler(minioClient))
-	r.Handle("/get/{object:[a-zA-Z0-9.-_]+}", getHandler(minioClient))
+	r.Handle("/put/{object:[a-zA-Z0-9.-_]+}", putHandler(minioClient, bucket))
+	r.Handle("/get/{object:[a-zA-Z0-9.-_]+}", getHandler(minioClient, bucket))
 
-    r.Handle("/put-blob/{object:[a-zA-Z0-9.-_]+}", putBlobHandler(minioClient))
-	r.Handle("/get-blob/{object:[a-zA-Z0-9.-_]+}", getBlobHandler(minioClient))
+    r.Handle("/put-blob/{object:[a-zA-Z0-9.-_]+}", putBlobHandler(minioClient, bucket))
+	r.Handle("/get-blob/{object:[a-zA-Z0-9.-_]+}", getBlobHandler(minioClient, bucket))
 
 s := &http.Server{
 		Addr:           ":8080",

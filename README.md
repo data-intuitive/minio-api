@@ -37,6 +37,7 @@ docker run -it \
   -e "access=<access_key>" \
   -e "secret=<secret_key>" \
   -e "host=172.17.0.2:9000" \
+  -e "bucket=tables" \
   tverbeiren/minio-api
 ```
 
